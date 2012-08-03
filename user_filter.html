@@ -2,19 +2,54 @@
 <html>
     <head>
         <title>D3 experiment</title>
-        <script type="text/javascript" src="http://mbostock.github.com/d3/d3.v2.js"></script>
         <!--
-        <script type="text/javascript" src="d3/d3.v2.js"></script>
+        <script type="text/javascript" src="http://mbostock.github.com/d3/d3.v2.js"></script>
         -->
+        <script type="text/javascript" src="d3/d3.v2.js"></script>
         <style type="text/css">
             #filter {
                 float: left;
                 overflow: auto;
             }
 
+            #filter text {
+                font-family: Helvetica, sans-serif;
+                font-size: 10px;
+            }
+
             #results {
                 float: left;
                 overflow: auto;
+            }
+
+            #results table {
+                font-family: Helvetica, sans-serif;
+                font-size: 10px;
+                white-space: nowrap;
+                border-collapse: collapse;
+            }
+
+            #results td, #results th {
+                text-align: right;
+                border:1px solid white;
+                padding:3px 7px 2px 7px;
+            }
+
+            #results tr.odd {
+                background-color: lightgray;
+            }
+
+
+            .brush .extent {
+                stroke: #fff;
+                fill-opacity: .25;
+            }
+
+            .histogram_bar {
+                fill: steelblue;
+                stroke: #555;
+                shape-rendering: crispEdges;
+                stroke-width: 0;
             }
         </style>
     </head>
@@ -35,8 +70,11 @@
             var filterWidth = totalWidth / 2 - 5;
             var resultsWidth = totalWidth / 2 - 5;
 
-            var hist_width = 300;
-            var hist_height = 80;
+            var label_width = 60;
+            var histogram_width = 300;
+            var histogram_height = 60;
+            var histogram_max_bins = 20;
+            var histogram_y_padding = 10;
 
             var filterFrame = d3.select("#filter");
             filterFrame.style("width", filterWidth + "px");
@@ -62,54 +100,81 @@
                 "Avg. Rating",
                 "Avg. Time",
                 "Comments",
-            ]
+            ];
 
+            var result_table_fields = ["GamerTag"].concat(numeric_fields);
 
-            var userData = [];    // [UserObj, ...]
-            var userMean;
+            var user_data = [];    // [UserObj, ...]
+            var filtered_users = [];
+            var user_mean;
 
             var histograms = new Object();
-            var histogram_max_bins = 30;
+            var brushes = new Object();
 
-            //var idVar = "GamerTag";
+            var filtered_data = [];
 
             function draw() {
+                var svg = d3.select("#filter")
+                    .append("svg")
+                    .attr("width", filterWidth-10)
+                    .attr("height", (histogram_height + histogram_y_padding) * numeric_fields.length);
+
+                // XXX: look at changing this to a d3-selection
                 for (var i in numeric_fields) {
                     var fname = numeric_fields[i];
 
                     // update the histogram's scales' ranges
                     var x_scale = histograms[fname].value_scale;
-                    x_scale.range([0, hist_width]);
+                    x_scale.range([0, histogram_width]);
 
                     var y_scale = histograms[fname].freq_scale;
-                    y_scale.range([0, hist_width]);
+                    y_scale.range([0, histogram_height]);
 
-                    var svg = d3.select("#filter")
-                        .append("svg")
-                        .attr("width", hist_width)
-                        .attr("height", hist_height);
+                    var field_g = svg.append("svg:g")
+                        .attr("transform", "translate(0, " + (i * (histogram_height + histogram_y_padding)) + ")");
 
-                    var bars = svg.selectAll(".bar")
+                    var label_g = field_g.append("svg:g");
+                    label_g.append("svg:text")
+                        .attr("class", "filter_field_label")
+                        .attr("transform", "translate(0, " + (histogram_height * 0.5) + ")")
+                        .attr("dx", ".35em")
+                        .text(fname);
+
+                    var histogram_g = field_g.append("svg:g")
+                        .attr("transform", "translate(" + label_width + ", 0)");
+
+                    var bars = histogram_g.selectAll(".histogram_bar")
                         .data(histograms[fname].values);
 
                     bars.enter()
                         .append("rect")
-                        .attr("class", "bar")
-                        .attr("x", function(d) { return x_scale(d.x); })
-                        .attr("y", function(d) { return hist_height - y_scale(d.y); })
-                        .attr("width", function(d) { return x_scale(d.dx) - 1; })
+                        .attr("class", "histogram_bar")
+                        .attr("x",      function(d) { return x_scale(d.x); })
+                        .attr("y",      function(d) { return histogram_height - y_scale(d.y); })
+                        .attr("width",  function(d) { return x_scale(d.dx) - 1; })
                         .attr("height", function(d) { return y_scale(d.y); });
-                }
 
-                //chart.select("#mean_line").remove();
-                //chart.append("line")
-                //    .attr("id", "mean_line")
-                //    .attr("x1", 0)
-                //    .attr("x2", visWidth)
-                //    .attr("y1", visHeight - yScale(userMean[barVar]))
-                //    .attr("y2", visHeight - yScale(userMean[barVar]))
-                //    .attr("stroke", "#555")
-                //    .attr("shape-rendering", "crispEdges");
+                    // draw mean-line
+                    histogram_g.append("svg:line")
+                        .attr("class", "filter_mean_line")
+                        .attr("x1", x_scale(user_mean[fname]))
+                        .attr("x2", x_scale(user_mean[fname]))
+                        .attr("y1", -4)
+                        .attr("y2", histogram_height+4)
+                        .attr("stroke", "#ff0000")
+                        .attr("stroke-width", "2")
+                        .attr("shape-rendering", "crispEdges");
+
+                    // setup brush
+                    var brushg = histogram_g.append("g")
+                        .attr("class", "brush")
+                        .attr("id", "brush_" + fname)
+                        .call(brushes[fname]);
+
+                    brushg.selectAll("rect")
+                        .attr("y", -2)
+                        .attr("height", histogram_height + 2);
+                }
             }
 
 
@@ -151,9 +216,9 @@
             }
 
 
-            function preprocessUserData(data) {
+            function preprocess_user_data(data) {
                 if (data == null) {
-                    console.error("null data passed into preprocessUserData");
+                    console.error("null data passed into preprocess_user_data");
                     return null;
                 }
 
@@ -166,7 +231,7 @@
             }
 
 
-            function getUserMean(data) {
+            function get_user_mean(data) {
                 var user = new Object();
                 for (var i in numeric_fields) {
                     var fname = numeric_fields[i];
@@ -205,20 +270,86 @@
                     hists[fname].freq_scale = freq_scale;
                     hists[fname].histogram_func = histogram;
                     hists[fname].values = values;
-                    // NOTE: still need to set the value and freq scale ranges!
+
+                    // NOTE: still need to set value_scale and freq_scale ranges
                 }
 
                 return hists;
             }
 
 
+            function setup_brushes(hists) {
+                var brushes = new Object();
+                for (var fname in hists) {
+                    brushes[fname] = d3.svg.brush()
+                        .x(hists[fname].value_scale)
+                        .on("brush", brush_move);
+                }
+
+                return brushes;
+            }
+
+
+            function brush_move() {
+                console.debug("HERE!");
+                // update the focus x-axis scale
+                //if (brush.empty()) {
+                //    focusXScale.domain(contextXScale.domain());
+                //} else {
+                //    focusXScale.domain(brush.extent());
+                //}
+                //d3.select("#focusXAxis").call(focusXAxis);
+            }
+
+            function init_results_frame() {
+                var table = d3.select("#results")
+                    .append("table");
+                var header = table.append("tr");
+                header.selectAll("th").data(result_table_fields)
+                    .enter()
+                    .append("th")
+                    .text(String);
+
+                table.append("tbody")
+                    .attr("id", "results_tbody");
+            }
+
+
+            function update_results_frame() {
+                var result_rows = d3.select("#results_tbody")
+                    .selectAll("tr")
+                    .data(filtered_data);
+
+                var enter_rows = result_rows.enter()
+                    .append("tr")
+                    .attr("class", function(d, i) {
+                        if ((i % 2) == 0) {
+                            return "even";
+                        }
+                        return "odd";
+                    });
+
+                for (var i in result_table_fields) {
+                    var fname = result_table_fields[i];
+                    enter_rows.append("td")
+                        .text(function(d) { return d[fname]; });
+                }
+            }
+
+
             var fname = "user_report.csv";
             d3.csv(fname, function(data) {
-                userData = preprocessUserData(data);
-                histograms = calculate_histograms(userData, numeric_fields);
-                userMean = getUserMean(userData);
+                user_data = preprocess_user_data(data);
+                user_mean = get_user_mean(user_data);
+                histograms = calculate_histograms(user_data, numeric_fields);
+                brushes = setup_brushes(histograms);
+
+                filtered_data = user_data;
+
+                init_results_frame();
 
                 draw();
+                update_results_frame();
             });
 
         </script>
