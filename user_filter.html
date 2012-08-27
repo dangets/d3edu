@@ -111,75 +111,69 @@
             var histograms = new Object();
             var brushes = new Object();
 
-            function initial_draw() {
-                var filter_svg = d3.select("#filter")
+            function draw() {
+                var svg = d3.select("#filter")
                     .append("svg")
-                    .attr("id", "filter_svg")
                     .attr("width", filterWidth-10)
                     .attr("height", (histogram_height + histogram_y_padding) * numeric_fields.length);
 
-                var widgets = filter_svg.selectAll(".filter_widget")
-                    .data(numeric_fields);
+                // XXX: look at changing this to a d3-selection
+                for (var i in numeric_fields) {
+                    var fname = numeric_fields[i];
 
-                // ENTER
-                var widget_enter = widgets.enter()
-                    .append("svg:g")
-                    .attr("class", "filter_widget")
-                    .attr("transform", function(d, i) {
-                            return "translate(0, " + (i * (histogram_height + histogram_y_padding)) + ")";
-                    });
+                    // update the histogram's scales' ranges
+                    var x_scale = histograms[fname].value_scale;
+                    x_scale.range([0, histogram_width]);
 
-                widget_enter.append("svg:text")
-                    .attr("class", "filter_field_label")
-                    .attr("transform", "translate(0, " + (histogram_height * 0.5) + ")")
-                    .attr("dx", ".35em")
-                    .text(String);
+                    var y_scale = histograms[fname].freq_scale;
+                    y_scale.range([0, histogram_height]);
 
-                var histogram_g = widget_enter.append("svg:g")
-                    .attr("transform", "translate(" + label_width + ", 0)");
+                    var field_g = svg.append("svg:g")
+                        .attr("transform", "translate(0, " + (i * (histogram_height + histogram_y_padding)) + ")");
 
-                var bars = histogram_g.selectAll(".histogram_bar")
-                    .data(function(d) { return histograms[d].values; });
+                    var label_g = field_g.append("svg:g");
+                    label_g.append("svg:text")
+                        .attr("class", "filter_field_label")
+                        .attr("transform", "translate(0, " + (histogram_height * 0.5) + ")")
+                        .attr("dx", ".35em")
+                        .text(fname);
 
-                bars.enter()
-                    .append("rect")
-                    .attr("class", "histogram_bar")
-                    .attr("x",      function(d) { return x_scale(d.x); })
-                    .attr("y",      function(d) { return histogram_height - y_scale(d.y); })
-                    .attr("width",  function(d) { return x_scale(d.dx) - 1; })
-                    .attr("height", function(d) { return y_scale(d.y); });
+                    var histogram_g = field_g.append("svg:g")
+                        .attr("transform", "translate(" + label_width + ", 0)");
 
-                //// setup brush
-                //var brushg = histogram_g.append("g")
-                //    .attr("class", "brush")
-                //    .attr("id", "brush_" + fname)
-                //    .call(brushes[fname]);
+                    var bars = histogram_g.selectAll(".histogram_bar")
+                        .data(histograms[fname].values);
 
-                //brushg.selectAll("rect")
-                //    .attr("y", -2)
-                //    .attr("height", histogram_height + 2);
+                    bars.enter()
+                        .append("rect")
+                        .attr("class", "histogram_bar")
+                        .attr("x",      function(d) { return x_scale(d.x); })
+                        .attr("y",      function(d) { return histogram_height - y_scale(d.y); })
+                        .attr("width",  function(d) { return x_scale(d.dx) - 1; })
+                        .attr("height", function(d) { return y_scale(d.y); });
+
+                    // draw mean-line
+                    histogram_g.append("svg:line")
+                        .attr("class", "filter_mean_line")
+                        .attr("x1", x_scale(user_mean[fname]))
+                        .attr("x2", x_scale(user_mean[fname]))
+                        .attr("y1", -4)
+                        .attr("y2", histogram_height+4)
+                        .attr("stroke", "#ff0000")
+                        .attr("stroke-width", "2")
+                        .attr("shape-rendering", "crispEdges");
+
+                    // setup brush
+                    var brushg = histogram_g.append("g")
+                        .attr("class", "brush")
+                        .attr("id", "brush_" + fname)
+                        .call(brushes[fname]);
+
+                    brushg.selectAll("rect")
+                        .attr("y", -2)
+                        .attr("height", histogram_height + 2);
+                }
             }
-
-            function update_draw() {
-            }
-            //    // XXX: look at changing this to a d3-selection
-            //    for (var i in numeric_fields) {
-            //        var fname = numeric_fields[i];
-
-
-            //        // draw mean-line
-            //        histogram_g.append("svg:line")
-            //            .attr("class", "filter_mean_line")
-            //            .attr("x1", x_scale(user_mean[fname]))
-            //            .attr("x2", x_scale(user_mean[fname]))
-            //            .attr("y1", -4)
-            //            .attr("y2", histogram_height+4)
-            //            .attr("stroke", "#ff0000")
-            //            .attr("stroke-width", "2")
-            //            .attr("shape-rendering", "crispEdges");
-
-            //    }
-            //}
 
 
             /**
@@ -274,17 +268,6 @@
                 // NOTE: value_scale and freq_scale ranges still
                 //       need to be set (elsewhere)
 
-                // update the histogram's scales' ranges
-                hist.value_scale.range([0, histogram_width]);
-                hist.freq_scale.range([0, histogram_height]);
-
-                //var x_scale = histograms[fname].value_scale;
-                //x_scale.range([0, histogram_width]);
-
-                //var y_scale = histograms[fname].freq_scale;
-                //y_scale.range([0, histogram_height]);
-
-
                 return hist;
             }
 
@@ -366,11 +349,14 @@
 
 
             function update_results_frame() {
+                // clear all results
+                d3.select("#results_tbody").selectAll("tr").remove();
+
+                // reinsert all results currently in the filtered_users var
                 var result_rows = d3.select("#results_tbody")
                     .selectAll("tr")
-                    .data(filtered_users);
+                    .data(filtered_users, function(u) { return u["GamerTag"]; });
 
-                // ENTER
                 var enter_rows = result_rows.enter()
                     .append("tr")
                     .attr("class", function(d, i) {
@@ -384,9 +370,6 @@
                     enter_rows.append("td")
                         .text(function(d) { return d[fname]; });
                 }
-
-                // EXIT
-                result_rows.exit().remove();
             }
 
 
@@ -402,7 +385,7 @@
 
                 init_results_frame();
 
-                initial_draw();
+                draw();
                 update_results_frame();
             });
 
