@@ -139,6 +139,7 @@
                         .text(fname);
 
                     var histogram_g = field_g.append("svg:g")
+                        .attr("id", "histogram_g_" + i)
                         .attr("transform", "translate(" + label_width + ", 0)");
 
                     var bars = histogram_g.selectAll(".histogram_bar")
@@ -158,7 +159,7 @@
                         .attr("x1", x_scale(user_mean[fname]))
                         .attr("x2", x_scale(user_mean[fname]))
                         .attr("y1", -4)
-                        .attr("y2", histogram_height+4)
+                        .attr("y2", histogram_height + 4)
                         .attr("stroke", "#ff0000")
                         .attr("stroke-width", "2")
                         .attr("shape-rendering", "crispEdges");
@@ -172,6 +173,40 @@
                     brushg.selectAll("rect")
                         .attr("y", -2)
                         .attr("height", histogram_height + 2);
+                }
+            }
+
+
+            function set_transition(fname, i) {
+                // HACK to get around javascript scoping
+                //  the right way is to use D3 nested data
+                var y_scale = histograms[fname].freq_scale;
+
+                var histogram_g = d3.select("#histogram_g_" + i);
+                var bars = histogram_g.selectAll(".histogram_bar")
+                    .data(histograms[fname].values);
+
+                bars.transition()
+                    .attr("y",      function(d) { return histogram_height - y_scale(d.y); })
+                    .attr("height", function(d) { return y_scale(d.y); });
+            }
+
+
+            function draw_update() {
+                // XXX: look at changing this to a d3-selection
+                for (var i in numeric_fields) {
+                    var fname = numeric_fields[i];
+                    set_transition(fname, i);
+
+                    //var y_scale = histograms[fname].freq_scale;
+
+                    //var histogram_g = d3.select("#histogram_g_" + i);
+                    //var bars = histogram_g.selectAll(".histogram_bar")
+                    //    .data(histograms[fname].values);
+
+                    //bars.transition()
+                    //    .attr("y",      function(d) { return histogram_height - y_scale(d.y); })
+                    //    .attr("height", function(d) { return y_scale(d.y); });
                 }
             }
 
@@ -299,14 +334,23 @@
             }
 
 
-            function brush_move(fname) {
-                //console.debug("brush_move(" + fname + ") called");
+            function brush_move(brush_field) {
+                //console.debug("brush_move(" + brush_field + ") called");
                 update_filtered_users();
                 update_results_frame();
-                // update histograms of NOT this brush
+
+                // update histograms except of this brush unless this brush is blank
                 for (var i in numeric_fields) {
                     var fname = numeric_fields[i];
+                    if (brush_field == fname && !brushes[fname].empty()) {
+                        continue;
+                    }
+
+                    var histogram_func = histograms[fname].histogram_func;
+                    histograms[fname].values = histogram_func(filtered_users);
                 }
+
+                draw_update();
             }
 
             function get_brush_extents(brush) {
